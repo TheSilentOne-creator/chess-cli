@@ -1,3 +1,23 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Chess.py - 命令行国际象棋
+
+版本: v1.0.0
+作者: TheSilentOne-creator
+License: MIT
+Repository: https://github.com/TheSilentOne-creator/chess-cli
+
+完整功能: 
+- 人机对战（AI 难度 2/3/4 层可调）
+- 人人对战
+- 完整规则（易位、过路兵、升变、50步、三次重复、子力不足）
+- PGN 对局导出
+- 悔棋
+- 棋子样式切换（字母 / Unicode）
+"""
+
 import random
 import subprocess
 import os
@@ -10,7 +30,7 @@ from collections import defaultdict
 SETTINGS_FILE = "settings.json"
 DEFAULT_SETTINGS = {
     'piece_style': 'letter',  # 'letter' 或 'unicode'
-    'ai_depth': 3,            # AI搜索深度：2=简单, 3=中等, 4=困难
+    'ai_depth': 3,            # AI搜索深度: 2=简单, 3=中等, 4=困难
 }
 
 SETTINGS = DEFAULT_SETTINGS.copy()
@@ -70,7 +90,7 @@ PIECE_VALUES = {
     'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000
 }
 
-# 位置价值表（简化版，让兵更愿意前进，马象占据中心）
+# 位置价值表（简化版, 让兵更愿意前进, 马象占据中心）
 PAWN_TABLE = [
     [0,  0,  0,  0,  0,  0,  0,  0],
     [50, 50, 50, 50, 50, 50, 50, 50],
@@ -92,7 +112,7 @@ def get_piece_value(piece, r, c, turn):
     # 只有兵有位置加成
     if piece.upper() == 'P':
         if turn == 'white':
-            # 白方视角，行从底部(7)到顶部(0)
+            # 白方视角, 行从底部(7)到顶部(0)
             row = 7 - r
         else:
             row = r
@@ -139,7 +159,7 @@ def print_board(board):
             if SETTINGS['piece_style'] == 'unicode':
                 # 使用Unicode符号
                 symbol = UNICODE_PIECES.get(piece, ' ')
-                # 为Unicode符号添加间距，保持对齐
+                # 为Unicode符号添加间距, 保持对齐
                 row_str += f" {symbol} "
             else:
                 # 使用字母
@@ -149,12 +169,7 @@ def print_board(board):
         row_str += f"  {line_num}"
         print(row_str)
     print("\n    a  b  c  d  e  f  g  h")
-
-    '''
-    # 显示当前使用的样式
-    style_name = "Unicode符号" if SETTINGS['piece_style'] == 'unicode' else "字母"
-    print(f"棋子样式: {style_name} | AI深度: {SETTINGS['ai_depth']}")
-    print("==============================\n")'''
+    print("=================================\n")
 
 # ---------------------- 坐标转换 a1 -> (行,列) ----------------------
 def pos_to_rc(pos):
@@ -179,7 +194,7 @@ def is_enemy(piece, turn):
         return False
     return not is_same_side(piece, turn)
 
-# ---------------------- 王车易位辅助：判断中间全空 ----------------------
+# ---------------------- 王车易位辅助: 判断中间全空 ----------------------
 def row_all_empty(board, r, c_start, c_end):
     step = 1 if c_end > c_start else -1
     c = c_start + step
@@ -198,7 +213,7 @@ def is_square_attacked(board, r, c, by_turn):
             if piece == EMPTY:
                 continue
             if is_same_side(piece, by_turn):
-                # 获取该棋子的走法（不检查合法性，只检查是否能到达目标）
+                # 获取该棋子的走法（不检查合法性, 只检查是否能到达目标）
                 moves = get_raw_moves(board, row, col, by_turn, None, None)
                 if (r, c) in moves:
                     return True
@@ -214,42 +229,6 @@ def get_raw_moves(board, r, c, turn, castling_state, en_passant_target):
 
     if piece_type == "R":
         dirs = [(-1,0), (1,0), (0,-1), (0,1)]
-    elif piece_type == "B":
-        dirs = [(-1,-1), (-1,1), (1,-1), (1,1)]
-    elif piece_type == "Q":
-        dirs = [(-1,0), (1,0), (0,-1), (0,1), (-1,-1), (-1,1), (1,-1), (1,1)]
-    elif piece_type == "N":
-        dirs = [(-2,-1), (-2,1), (-1,-2), (-1,2), (1,-2), (1,2), (2,-1), (2,1)]
-    elif piece_type == "K":
-        dirs = [(-1,0), (1,0), (0,-1), (0,1), (-1,-1), (-1,1), (1,-1), (1,1)]
-    elif piece_type == "P":
-        dr = -1 if turn == "white" else 1
-        start_r = 6 if turn == "white" else 1
-        nr = r + dr
-        # 直走一格
-        if 0 <= nr < 8 and board[nr][c] == EMPTY:
-            moves.append((nr, c))
-            # 开局双走两格
-            if r == start_r:
-                nr2 = r + dr * 2
-                if board[nr2][c] == EMPTY:
-                    moves.append((nr2, c))
-        # 斜吃普通棋子
-        for dc in (-1, 1):
-            nc = c + dc
-            nr = r + dr
-            if 0 <= nr < 8 and 0 <= nc < 8 and is_enemy(board[nr][nc], turn):
-                moves.append((nr, nc))
-        # 吃过路兵
-        if en_passant_target is not None:
-            ep_r, ep_c = en_passant_target
-            for dc in (-1, 1):
-                if (r + dr, c + dc) == (ep_r, ep_c):
-                    moves.append((ep_r, ep_c))
-        return moves
-
-    # 车象后长线移动
-    if piece_type in ("R", "B", "Q"):
         for dr, dc in dirs:
             nr, nc = r + dr, c + dc
             while 0 <= nr < 8 and 0 <= nc < 8:
@@ -264,8 +243,49 @@ def get_raw_moves(board, r, c, turn, castling_state, en_passant_target):
                 nr += dr
                 nc += dc
     
-    # 王基础移动
-    if piece_type == "K":
+    elif piece_type == "B":
+        dirs = [(-1,-1), (-1,1), (1,-1), (1,1)]
+        for dr, dc in dirs:
+            nr, nc = r + dr, c + dc
+            while 0 <= nr < 8 and 0 <= nc < 8:
+                target = board[nr][nc]
+                if target == EMPTY:
+                    moves.append((nr, nc))
+                elif is_enemy(target, turn):
+                    moves.append((nr, nc))
+                    break
+                else:
+                    break
+                nr += dr
+                nc += dc
+    
+    elif piece_type == "Q":
+        dirs = [(-1,0), (1,0), (0,-1), (0,1), (-1,-1), (-1,1), (1,-1), (1,1)]
+        for dr, dc in dirs:
+            nr, nc = r + dr, c + dc
+            while 0 <= nr < 8 and 0 <= nc < 8:
+                target = board[nr][nc]
+                if target == EMPTY:
+                    moves.append((nr, nc))
+                elif is_enemy(target, turn):
+                    moves.append((nr, nc))
+                    break
+                else:
+                    break
+                nr += dr
+                nc += dc
+    
+    elif piece_type == "N":
+        dirs = [(-2,-1), (-2,1), (-1,-2), (-1,2), (1,-2), (1,2), (2,-1), (2,1)]
+        for dr, dc in dirs:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < 8 and 0 <= nc < 8:
+                target = board[nr][nc]
+                if target == EMPTY or is_enemy(target, turn):
+                    moves.append((nr, nc))
+    
+    elif piece_type == "K":
+        dirs = [(-1,0), (1,0), (0,-1), (0,1), (-1,-1), (-1,1), (1,-1), (1,1)]
         for dr, dc in dirs:
             nr, nc = r + dr, c + dc
             if 0 <= nr < 8 and 0 <= nc < 8:
@@ -301,6 +321,31 @@ def get_raw_moves(board, r, c, turn, castling_state, en_passant_target):
                             not is_square_attacked(board, 0, 2, "white")):
                             moves.append((0,2))
     
+    elif piece_type == "P":
+        dr = -1 if turn == "white" else 1
+        start_r = 6 if turn == "white" else 1
+        nr = r + dr
+        # 直走一格
+        if 0 <= nr < 8 and board[nr][c] == EMPTY:
+            moves.append((nr, c))
+            # 开局双走两格
+            if r == start_r:
+                nr2 = r + dr * 2
+                if board[nr2][c] == EMPTY:
+                    moves.append((nr2, c))
+        # 斜吃普通棋子
+        for dc in (-1, 1):
+            nc = c + dc
+            nr = r + dr
+            if 0 <= nr < 8 and 0 <= nc < 8 and is_enemy(board[nr][nc], turn):
+                moves.append((nr, nc))
+        # 吃过路兵
+        if en_passant_target is not None:
+            ep_r, ep_c = en_passant_target
+            for dc in (-1, 1):
+                if (r + dr, c + dc) == (ep_r, ep_c):
+                    moves.append((ep_r, ep_c))
+    
     return moves
 
 # ---------------------- 获取合法走法（考虑将军） ----------------------
@@ -314,12 +359,12 @@ def get_legal_moves(board, r, c, turn, castling_state, en_passant_target):
         temp_board = copy.deepcopy(board)
         temp_castling = copy.deepcopy(castling_state) if castling_state else None
         
-        # 模拟移动（简化版，只用于检查将军）
+        # 模拟移动（简化版, 只用于检查将军）
         piece = temp_board[r][c]
         temp_board[tr][tc] = piece
         temp_board[r][c] = EMPTY
         
-        # 如果是王，更新位置
+        # 如果是王, 更新位置
         if piece.upper() == "K":
             # 检查易位
             if piece == "K" and r == 7 and c == 4 and tr == 7 and tc == 6:
@@ -394,9 +439,9 @@ def get_all_legal_moves(board, turn, castling_state, en_passant_target):
 # ---------------------- 兵升变选择函数 ----------------------
 def promotion_select(is_white):
     while True:
-        print("\n兵到达底线，请选择升变棋子：")
+        print("\n兵到达底线, 请选择升变棋子: ")
         print("1 - 后(Q/q) | 2 - 车(R/r) | 3 - 象(B/b) | 4 - 马(N/n)")
-        sel = input("输入数字：").strip()
+        sel = input("输入数字: ").strip()
         if sel == "1":
             return WQ if is_white else BQ
         elif sel == "2":
@@ -406,11 +451,11 @@ def promotion_select(is_white):
         elif sel == "4":
             return WN if is_white else BN
         else:
-            print("输入无效，请输入1/2/3/4！")
+            print("输入无效, 请输入1/2/3/4! ")
 
 # ---------------------- 落子逻辑（返回完整状态用于悔棋） ----------------------
 def make_move(board, fr, fc, tr, tc, castling_state, turn, en_passant_target):
-    """执行走法，返回所有需要记录的信息"""
+    """执行走法, 返回所有需要记录的信息"""
     piece = board[fr][fc]
     captured_piece = board[tr][tc]
     new_ep = None
@@ -436,12 +481,12 @@ def make_move(board, fr, fc, tr, tc, castling_state, turn, en_passant_target):
         is_capture = True
         is_en_passant = True
 
-    # 2. 兵一次走两格，记录过路兵坐标
+    # 2. 兵一次走两格, 记录过路兵坐标
     if piece.upper() == "P" and dr_abs == 2:
         ep_row = (fr + tr) // 2
         new_ep = (ep_row, tc)
 
-    # 3. 王车易位，自动移动车
+    # 3. 王车易位, 自动移动车
     if piece == "K":
         castling_state["w_king"] = True
         if fr == 7 and fc == 4 and tr == 7 and tc == 6:
@@ -467,7 +512,7 @@ def make_move(board, fr, fc, tr, tc, castling_state, turn, en_passant_target):
             moved_piece = "k"
             is_castling = True
 
-    # 4. 车移动标记，禁止易位
+    # 4. 车移动标记, 禁止易位
     if piece == "R":
         if fc == 0: castling_state["w_r_left"] = True
         if fc == 7: castling_state["w_r_right"] = True
@@ -475,7 +520,7 @@ def make_move(board, fr, fc, tr, tc, castling_state, turn, en_passant_target):
         if fc == 0: castling_state["b_r_left"] = True
         if fc == 7: castling_state["b_r_right"] = True
     
-    # 如果车被吃，也要标记
+    # 如果车被吃, 也要标记
     if tr == 7 and tc == 0:
         castling_state["w_r_left"] = True
     if tr == 7 and tc == 7:
@@ -540,7 +585,7 @@ def undo_move(board, castling_state, move_record):
         board[ep_r][ep_c] = 'p' if piece.islower() else 'P'
         board[tr][tc] = EMPTY
     elif is_castling:
-        # 王车易位：恢复王和车的位置
+        # 王车易位: 恢复王和车的位置
         if piece == "K":
             board[tr][tc] = EMPTY
             if tc == 6:  # 短易位
@@ -561,11 +606,11 @@ def undo_move(board, castling_state, move_record):
         # 普通移动
         board[tr][tc] = captured
         
-        # 如果吃子，恢复被吃的棋子
+        # 如果吃子, 恢复被吃的棋子
         if captured != EMPTY:
             board[tr][tc] = captured
         
-        # 如果是升变，恢复兵
+        # 如果是升变, 恢复兵
         if promotion_piece:
             board[fr][fc] = piece  # 恢复为兵
     
@@ -645,7 +690,7 @@ def check_insufficient_material(board):
     white_pieces = [p for p in pieces['white'] if p != 'K']
     black_pieces = [p for p in pieces['black'] if p != 'k']
     
-    # 如果双方都没有棋子，只有王 vs 王
+    # 如果双方都没有棋子, 只有王 vs 王
     if not white_pieces and not black_pieces:
         return True
     
@@ -925,9 +970,9 @@ def minimax(board, depth, alpha, beta, is_maximizing, castling_state, en_passant
                 break
         return min_eval, best_move
 
-# ---------------------- AI走棋（只计算走法，不执行移动）--------------------
+# ---------------------- AI走棋（只计算走法, 不执行移动）--------------------
 def get_ai_move(board, castling_state, en_passant_target, depth):
-    """AI计算走法，返回 (fr, fc, tr, tc) 或 None"""
+    """AI计算走法, 返回 (fr, fc, tr, tc) 或 None"""
     all_moves = get_all_legal_moves(board, "black", castling_state, en_passant_target)
     if not all_moves:
         return None
@@ -952,17 +997,17 @@ def play_ai():
     recorder.add_position(board)
     
     print("=========== 简易国际象棋人机对战 ===========")
-    print("操作说明：")
-    print("  1. 你操控白方大写，AI黑方小写")
-    print("  2. 王车易位：e1g1(短) / e1c1(长)")
-    print("  3. 吃过路兵：敌方兵双走后斜一格吃掉，仅限下一回合")
+    print("操作说明: ")
+    print("  1. 你操控白方大写, AI黑方小写")
+    print("  2. 王车易位: e1g1(短) / e1c1(长)")
+    print("  3. 吃过路兵: 敌方兵双走后斜一格吃掉, 仅限下一回合")
     print("  4. 兵走到底线可升变后/车/象/马")
     print("  5. 格式示例 e2e4 | quit 返回菜单")
-    print(f"  6. AI难度：深度{SETTINGS['ai_depth']}层 (设置中可调整)")
+    print(f"  6. AI难度: 深度{SETTINGS['ai_depth']}层 (设置中可调整)")
     print("  7. 输入 'history' 查看历史走法")
     print("  8. 输入 'save' 保存PGN文件")
     print("  9. 输入 'undo' 悔棋（撤销上一步）")
-    print("  10. 胜负判定：将杀、逼和、三次重复、50步规则、子力不足\n")
+    print("  10. 胜负判定: 将杀、逼和、三次重复、50步规则、子力不足\n")
     
     move_count = 0
     
@@ -971,7 +1016,7 @@ def play_ai():
         print_board(board)
         
         # 显示游戏状态信息
-        print("================================")
+        # print("================================")
         print(f"\n当前回合: {'白方' if move_count % 2 == 0 else '黑方'}")
         print(f"半步计数: {recorder.halfmove_clock}/100 (50步规则)")
         print(f"记录局面数: {len(recorder.position_history)}")
@@ -983,13 +1028,13 @@ def play_ai():
         )
         if is_end:
             print_board(board)
-            print(f"\n🏁 游戏结束！原因: {reason}")
+            print(f"\n🏁 游戏结束! 原因: {reason}")
             if result == "1-0":
-                print("🎉 你赢了！")
+                print("🎉 你赢了! ")
             elif result == "0-1":
-                print("💀 AI赢了！")
+                print("💀 AI赢了! ")
             else:
-                print("🤝 和棋！")
+                print("🤝 和棋! ")
             recorder.set_result(result)
             recorder.display_history()
             save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1001,9 +1046,9 @@ def play_ai():
         
         # 检查玩家是否被将杀
         if is_king_in_check(board, "white"):
-            print("⚠️  注意：你的王被将军了！")
+            print("⚠️  注意: 你的王被将军了! ")
         
-        user_input = input("【你的回合 - 白方】请输入走棋：").strip().lower()
+        user_input = input("【你的回合 - 白方】请输入走棋: ").strip().lower()
         
         if user_input == "quit":
             clear_screen()
@@ -1025,9 +1070,9 @@ def play_ai():
             continue
         
         if user_input == "undo":
-            # 悔棋逻辑：需要撤销两步（AI走+玩家走）
+            # 悔棋逻辑: 需要撤销两步（AI走+玩家走）
             if len(recorder.move_records) < 2:
-                print("❌ 没有足够的走法可以悔棋！")
+                print("❌ 没有足够的走法可以悔棋! ")
                 input("\n回车继续...")
                 continue
             
@@ -1048,11 +1093,11 @@ def play_ai():
             input("\n回车继续...")
             continue
         
-        # 去除空格和连字符，增强容错性
+        # 去除空格和连字符, 增强容错性
         user_input = user_input.replace(' ', '').replace('-', '')
         
         if len(user_input) != 4:
-            print("❌ 格式错误！示例：e2e4 或 e2-e4")
+            print("❌ 格式错误! 示例: e2e4 或 e2-e4")
             input("\n回车继续...")
             continue
         
@@ -1067,13 +1112,13 @@ def play_ai():
         
         piece = board[fr][fc]
         if not is_same_side(piece, "white"):
-            print("❌ 不是你的棋子！")
+            print("❌ 不是你的棋子! ")
             input("\n回车继续...")
             continue
         
         legal = get_legal_moves(board, fr, fc, "white", castling_state, en_passant_target)
         if (tr, tc) not in legal:
-            print("❌ 非法走棋！")
+            print("❌ 非法走棋! ")
             input("\n回车继续...")
             continue
         
@@ -1097,7 +1142,7 @@ def play_ai():
             if not ai_moves:
                 clear_screen()
                 print_board(board)
-                print("\n🎉 将杀！你赢了！")
+                print("\n🎉 将杀! 你赢了! ")
                 recorder.set_result("1-0")
                 recorder.display_history()
                 save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1115,13 +1160,13 @@ def play_ai():
         if is_end:
             clear_screen()
             print_board(board)
-            print(f"\n🏁 游戏结束！原因: {reason}")
+            print(f"\n🏁 游戏结束! 原因: {reason}")
             if result == "1-0":
-                print("🎉 你赢了！")
+                print("🎉 你赢了! ")
             elif result == "0-1":
-                print("💀 AI赢了！")
+                print("💀 AI赢了! ")
             else:
-                print("🤝 和棋！")
+                print("🤝 和棋! ")
             recorder.set_result(result)
             recorder.display_history()
             save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1131,22 +1176,22 @@ def play_ai():
             input("\n回车返回菜单...")
             break
         
-        print("\n✅ 落子成功，AI思考中...")
+        print("\n✅ 落子成功, AI思考中...")
         
         # AI计算走法（不执行）
         best_move = get_ai_move(board, castling_state, en_passant_target, SETTINGS['ai_depth'])
         
         if best_move is None:
-            # AI无走法，检查是否被将杀或逼和
+            # AI无走法, 检查是否被将杀或逼和
             if is_king_in_check(board, "black"):
                 clear_screen()
                 print_board(board)
-                print("\n🎉 将杀！你赢了！")
+                print("\n🎉 将杀! 你赢了! ")
                 recorder.set_result("1-0")
             else:
                 clear_screen()
                 print_board(board)
-                print("\n🤝 逼和！")
+                print("\n🤝 逼和! ")
                 recorder.set_result("1/2-1/2")
             recorder.display_history()
             save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1185,7 +1230,7 @@ def play_ai():
             if not ai_moves:
                 clear_screen()
                 print_board(board)
-                print("\n🎉 将杀！你赢了！")
+                print("\n🎉 将杀! 你赢了! ")
                 recorder.set_result("1-0")
                 recorder.display_history()
                 save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1203,13 +1248,13 @@ def play_ai():
         if is_end:
             clear_screen()
             print_board(board)
-            print(f"\n🏁 游戏结束！原因: {reason}")
+            print(f"\n🏁 游戏结束! 原因: {reason}")
             if result == "1-0":
-                print("🎉 你赢了！")
+                print("🎉 你赢了! ")
             elif result == "0-1":
-                print("💀 AI赢了！")
+                print("💀 AI赢了! ")
             else:
-                print("🤝 和棋！")
+                print("🤝 和棋! ")
             recorder.set_result(result)
             recorder.display_history()
             save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1234,12 +1279,12 @@ def play_pvp():
     recorder.add_position(board)
     
     print("=========== 人人对战 ===========")
-    print("白先行，支持易位、过路兵、兵升变")
+    print("白先行, 支持易位、过路兵、兵升变")
     print("输入 'history' 查看历史走法")
     print("输入 'save' 保存PGN文件")
     print("输入 'undo' 悔棋")
     print("输入 'quit' 返回菜单")
-    print("胜负判定：将杀、逼和、三次重复、50步规则、子力不足\n")
+    print("胜负判定: 将杀、逼和、三次重复、50步规则、子力不足\n")
     
     move_count = 0
     
@@ -1257,13 +1302,13 @@ def play_pvp():
         )
         if is_end:
             print_board(board)
-            print(f"\n🏁 游戏结束！原因: {reason}")
+            print(f"\n🏁 游戏结束! 原因: {reason}")
             if result == "1-0":
-                print("🎉 白方胜利！")
+                print("🎉 白方胜利! ")
             elif result == "0-1":
-                print("🎉 黑方胜利！")
+                print("🎉 黑方胜利! ")
             else:
-                print("🤝 和棋！")
+                print("🤝 和棋! ")
             recorder.set_result(result)
             recorder.display_history()
             save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1275,16 +1320,16 @@ def play_pvp():
         
         # 检查当前玩家是否被将杀
         if is_king_in_check(board, turn):
-            print(f"⚠️  注意：{turn}方的王被将军了！")
+            print(f"⚠️  注意: {turn}方的王被将军了! ")
         
         all_moves = get_all_legal_moves(board, turn, castling_state, en_passant_target)
         if not all_moves:
             if is_king_in_check(board, turn):
                 winner = "黑方" if turn == "white" else "白方"
-                print(f"💀 将杀！{winner}获胜！")
+                print(f"💀 将杀! {winner}获胜! ")
                 recorder.set_result("0-1" if turn == "white" else "1-0")
             else:
-                print("🤝 逼和！")
+                print("🤝 逼和! ")
                 recorder.set_result("1/2-1/2")
             recorder.display_history()
             save_choice = input("\n是否保存PGN文件？(y/n): ").strip().lower()
@@ -1295,7 +1340,7 @@ def play_pvp():
             break
         
         tip = "【白方回合 大写棋子】" if turn == "white" else "【黑方回合 小写棋子】"
-        user_in = input(f"{tip} 输入走棋：").strip().lower()
+        user_in = input(f"{tip} 输入走棋: ").strip().lower()
         
         if user_in == "quit":
             clear_screen()
@@ -1318,7 +1363,7 @@ def play_pvp():
         
         if user_in == "undo":
             if len(recorder.move_records) < 1:
-                print("❌ 没有走法可以悔棋！")
+                print("❌ 没有走法可以悔棋! ")
                 input("\n回车继续...")
                 continue
             
@@ -1336,7 +1381,7 @@ def play_pvp():
             input("\n回车继续...")
             continue
         
-        # 去除空格和连字符，增强容错性
+        # 去除空格和连字符, 增强容错性
         user_in = user_in.replace(' ', '').replace('-', '')
         
         if len(user_in) != 4:
@@ -1355,13 +1400,13 @@ def play_pvp():
         
         piece = board[fr][fc]
         if not is_same_side(piece, turn):
-            print("❌ 当前回合不能移动该棋子！")
+            print("❌ 当前回合不能移动该棋子! ")
             input("\n回车继续...")
             continue
         
         legal = get_legal_moves(board, fr, fc, turn, castling_state, en_passant_target)
         if (tr, tc) not in legal:
-            print("❌ 非法移动！")
+            print("❌ 非法移动! ")
             input("\n回车继续...")
             continue
         
@@ -1388,7 +1433,7 @@ def play_pvp():
                 else:
                     recorder.halfmove_clock += 1
         
-        print("✅ 落子完成，切换对手")
+        print("✅ 落子完成, 切换对手")
         turn = "black" if turn == "white" else "white"
         input("\n回车切换棋盘...")
 
@@ -1396,27 +1441,27 @@ def play_pvp():
 def show_help():
     clear_screen()
     print("==================== 游戏帮助 ====================")
-    print("1.菜单选项：1人机 2人人 3帮助 4设置 5退出")
-    print("2.走棋格式：4字符，起点+终点 例e2e4 (支持 e2-e4)")
-    print("3.棋子：白大写 KQRNBP | 黑小写 kqrnbp")
-    print("4.特殊规则：")
-    print("   ①王车易位：王、车未移动，中间无棋子")
+    print("1.菜单选项: 1人机 2人人 3帮助 4设置 5退出")
+    print("2.走棋格式: 4字符, 起点+终点 例e2e4 (支持 e2-e4)")
+    print("3.棋子: 白大写 KQRNBP | 黑小写 kqrnbp")
+    print("4.特殊规则: ")
+    print("   ① 王车易位: 王、车未移动, 中间无棋子")
     print("     白短e1g1 / 白长e1c1 | 黑短e8g8 / 黑长e8c8")
-    print("     注：王不能处于被将军状态，经过和到达的格子不能被攻击")
-    print("   ②吃过路兵：敌方兵一步两格，斜一格吃掉，仅限下一回合")
-    print("   ③兵升变：兵走到底线，可选后/车/象/马；AI自动升后")
+    print("     注: 王不能处于被将军状态, 经过和到达的格子不能被攻击")
+    print("   ② 吃过路兵: 敌方兵一步两格, 斜一格吃掉, 仅限下一回合")
+    print("   ③ 兵升变: 兵走到底线, 可选后/车/象/马；AI自动升后")
     print("5.对局输入quit随时返回主菜单")
-    print("6.胜负判定（增强）：")
-    print("   - 将杀：王被将军且无法应将")
-    print("   - 逼和：轮到走棋时无合法走法但王未被将军")
-    print("   - 三次重复局面：同一局面出现3次")
-    print("   - 50步规则：50步内无兵移动或吃子")
-    print("   - 子力不足：无法将杀（如王vs王、王+马vs王等）")
-    print("7.交互命令：")
+    print("6.胜负判定（增强）: ")
+    print("   - 将杀: 王被将军且无法应将")
+    print("   - 逼和: 轮到走棋时无合法走法但王未被将军")
+    print("   - 三次重复局面: 同一局面出现3次")
+    print("   - 50步规则: 50步内无兵移动或吃子")
+    print("   - 子力不足: 无法将杀（如王vs王、王+马vs王等）")
+    print("7.交互命令: ")
     print("   - 'history' 查看历史走法")
     print("   - 'save' 保存PGN文件")
-    print("   - 'undo' 悔棋（人机模式撤销两步，人人模式撤销一步）")
-    print("8.设置功能：")
+    print("   - 'undo' 悔棋（人机模式撤销两步, 人人模式撤销一步）")
+    print("8.设置功能: ")
     print("   - 切换棋子显示样式（字母 ↔ Unicode符号）")
     print("   - 调整AI难度（搜索深度 2=简单 / 3=中等 / 4=困难）")
     print("==================================================")
@@ -1428,17 +1473,17 @@ def show_settings():
     while True:
         clear_screen()
         print("\n==================== 设置 ====================")
-        print("当前设置：")
+        print("当前设置: ")
         print(f"  1. 棋子样式: {'Unicode符号 ♔♚' if SETTINGS['piece_style'] == 'unicode' else '字母 KQ'}")
         print(f"  2. AI难度: 深度 {SETTINGS['ai_depth']} 层 "
               f"({'简单' if SETTINGS['ai_depth'] <= 2 else '中等' if SETTINGS['ai_depth'] == 3 else '困难'})")
-        print("\n请选择要修改的设置：")
+        print("\n请选择要修改的设置: ")
         print("  1 - 切换棋子样式（字母 ↔ Unicode符号）")
         print("  2 - 调整AI难度（2=简单 / 3=中等 / 4=困难）")
         print("  0 - 返回主菜单")
         print("==============================================")
         
-        choice = input("请输入数字选择：").strip()
+        choice = input("请输入数字选择: ").strip()
         
         if choice == "0":
             save_settings()
@@ -1453,30 +1498,30 @@ def show_settings():
                 print("\n✅ 已切换到 字母 样式")
             
             # 显示预览
-            print("\n预览效果：")
+            print("\n预览效果: ")
             print("  字母样式: K Q R B N P")
             print("  Unicode样式: ♔ ♕ ♖ ♗ ♘ ♙")
-            print("\n设置已保存，按回车返回设置菜单...")
+            print("\n设置已保存, 按回车返回设置菜单...")
             input()
         elif choice == "2":
             # 调整AI深度
             while True:
-                print("\n选择AI难度：")
-                print("  2 - 简单（思考快，但棋力弱）")
+                print("\n选择AI难度: ")
+                print("  2 - 简单（思考快, 但棋力弱）")
                 print("  3 - 中等（平衡）")
-                print("  4 - 困难（思考慢，棋力强）")
-                depth_choice = input("请输入 2/3/4：").strip()
+                print("  4 - 困难（思考慢, 棋力强）")
+                depth_choice = input("请输入 2/3/4: ").strip()
                 if depth_choice in ('2', '3', '4'):
                     SETTINGS['ai_depth'] = int(depth_choice)
                     print(f"\n✅ AI深度已设置为 {SETTINGS['ai_depth']} 层")
-                    print("   （深度4以上会明显变慢，不建议更高）")
+                    print("   （深度4以上会明显变慢, 不建议更高）")
                     input("\n回车继续...")
                     break
                 else:
                     print("❌ 请输入 2/3/4")
                     input("\n回车继续...")
         else:
-            print("❌ 输入无效，请重新选择")
+            print("❌ 输入无效, 请重新选择")
             input("\n回车继续...")
 
 # ---------------------- 主菜单 ----------------------
@@ -1486,14 +1531,14 @@ def main():
     
     while True:
         clear_screen()
-        print("\n==================== 国际象棋 开始界面 ====================")
-        print("1 - 人机对战")
-        print("2 - 人人对战")
-        print("3 - 查看帮助")
-        print("4 - 设置")
-        print("5 - 退出游戏")
+        print("\n==================== 国际象棋 开始界面 ===================")
+        print("| 1 - 人机对战                                           |")
+        print("| 2 - 人人对战                                           |")
+        print("| 3 - 查看帮助                                           |")
+        print("| 4 - 设置                                               |")
+        print("| 5 - 退出游戏                                           |")
         print("==========================================================")
-        sel = input("请输入数字选择：").strip()
+        sel = input("请输入数字选择: ").strip()
         if sel == "1":
             play_ai()
         elif sel == "2":
@@ -1504,10 +1549,10 @@ def main():
             show_settings()
         elif sel == "5":
             clear_screen()
-            print("游戏退出，再见！")
+            print("游戏退出, 再见! ")
             break
         else:
-            print("输入无效，请输入1/2/3/4/5")
+            print("输入无效, 请输入1/2/3/4/5")
             input("回车继续...")
 
 if __name__ == "__main__":
