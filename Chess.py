@@ -3,12 +3,12 @@
 """
 chess.py - 命令行国际象棋
 
-版本: v Beta 1.0
-作者: TheSilentOne-creator
-License: MIT
-Repository: https://github.com/TheSilentOne-creator/chess-cli
+版本：v1.1.1
+作者：TheSilentOne-creator
+License：MIT
+Repository：https://github.com/TheSilentOne-creator/chess-cli
 
-完整功能: 
+完整功能：
 - 人机对战（AI 难度 2/3/4 层可调）
 - 人人对战
 - 完整规则（易位、过路兵、升变、50步、三次重复、子力不足）
@@ -23,6 +23,9 @@ Repository: https://github.com/TheSilentOne-creator/chess-cli
 - 传统走法模式（走法建议关闭时）
 - 类型注解
 - 增强错误处理
+- 开局库（AI 秒响应前几步）
+- AI 随机性（对局更多变）
+- AI 思考过程显示（可开关）
 """
 
 import random
@@ -53,13 +56,13 @@ class GameStateError(ChessError):
     pass
 
 # ---------------------- 类型别名 ----------------------
-# 位置类型:  (row, col)
+# 位置类型： (row, col)
 Position = Tuple[int, int]
 
-# 走法类型:  ((from_row, from_col), (to_row, to_col))
+# 走法类型： ((from_row, from_col), (to_row, to_col))
 MoveType = Tuple[Position, Position]
 
-# 棋盘类型:  8x8 字符串列表
+# 棋盘类型： 8x8 字符串列表
 BoardType = List[List[str]]
 
 # 易位状态类型
@@ -71,11 +74,13 @@ MoveRecord = Dict[str, Any]
 # ---------------------- 全局设置 ----------------------
 SETTINGS_FILE = "settings.json"
 DEFAULT_SETTINGS = {
-    'piece_style': 'letter',      # 'letter' 或 'unicode'
-    'ai_depth': 3,                # AI搜索深度: 2=简单, 3=中等, 4=困难
-    'show_history': True,         # 是否在棋盘旁显示走法历史
-    'use_colors': True,           # 是否使用彩色输出
-    'show_suggestions': True,     # 是否显示走法建议
+    'piece_style': 'letter',          # 'letter' 或 'unicode'
+    'ai_depth': 3,                    # AI搜索深度：2=简单, 3=中等, 4=困难
+    'show_history': True,             # 是否在棋盘旁显示走法历史
+    'use_colors': True,               # 是否使用彩色输出
+    'show_suggestions': True,         # 是否显示走法建议
+    'ai_randomness': True,            # AI 随机性
+    'show_ai_thinking': True,         # AI 思考过程显示
 }
 
 SETTINGS = DEFAULT_SETTINGS.copy()
@@ -103,6 +108,67 @@ PAWN_DOUBLE_STEP = 2
 
 # ---------------------- AI 常量 ----------------------
 MATE_SCORE = 100000
+RANDOMNESS_THRESHOLD = 30     # AI 随机性阈值
+
+# ---------------------- 开局库常量 ----------------------
+OPENING_BOOK = {
+    # ========== 白方第一步 ==========
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR': 'e2e4',
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR': 'd2d4',
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR': 'c2c4',
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR': 'g1f3',
+    
+    # ========== 王兵开局（1.e4） ==========
+    # 1.e4 e5
+    'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR': 'g1f3',
+    'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR': 'f1c4',
+    
+    # 1.e4 c5（西西里防御）
+    'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR': 'g1f3',
+    
+    # 1.e4 e6（法兰西防御）
+    'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR': 'd2d4',
+    
+    # 1.e4 c6（卡罗-卡恩防御）
+    'rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR': 'd2d4',
+    
+    # 1.e4 d5（斯堪的纳维亚防御）
+    'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR': 'e4d5',
+    
+    # 1.e4 Nf6（阿廖欣防御）
+    'rnbqkb1r/pppppppp/5n2/8/4P3/8/PPPP1PPP/RNBQKBNR': 'e4e5',
+    
+    # ========== 后兵开局（1.d4） ==========
+    # 1.d4 d5
+    'rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR': 'c2c4',
+    'rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR': 'g1f3',
+    
+    # 1.d4 Nf6（印度防御）
+    'rnbqkb1r/pppppppp/5n2/8/3P4/8/PPP1PPPP/RNBQKBNR': 'c2c4',
+    
+    # ========== 意大利开局变例 ==========
+    # 1.e4 e5 2.Nf3 Nc6
+    'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R': 'f1c4',
+    'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R': 'f1b5',
+    
+    # 1.e4 e5 2.Nf3 Nc6 3.Bb5（西班牙）
+    'r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R': 'a2a3',
+    
+    # ========== 西西里防御变例 ==========
+    # 1.e4 c5 2.Nf3 d6
+    'rnbqkbnr/pp2pppp/3p4/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R': 'd2d4',
+    # 1.e4 c5 2.Nf3 Nc6
+    'r1bqkbnr/pp1ppppp/2n5/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R': 'd2d4',
+    # 1.e4 c5 2.Nf3 e6
+    'rnbqkbnr/pp1p1ppp/4p3/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R': 'd2d4',
+    
+    # ========== 后翼弃兵 ==========
+    # 1.d4 d5 2.c4 e6
+    'rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/8/PP2PPPP/RNBQKBNR': 'c1g5',
+    
+    # 1.d4 d5 2.c4 c6（斯拉夫防御）
+    'rnbqkbnr/pp2pppp/2p5/3p4/2PP4/8/PP2PPPP/RNBQKBNR': 'g1f3',
+}
 
 # ---------------------- UI 常量 ----------------------
 MAX_HISTORY_DISPLAY = 20
@@ -120,7 +186,7 @@ def load_settings() -> None:
         save_settings()
         print("📝 已创建默认设置文件")
     except json.JSONDecodeError as e:
-        print(f"⚠️  设置文件损坏 ({e}), 使用默认设置")
+        print(f"⚠️  设置文件损坏 ({e})，使用默认设置")
         try:
             backup_name = f"{SETTINGS_FILE}.backup"
             os.rename(SETTINGS_FILE, backup_name)
@@ -129,9 +195,9 @@ def load_settings() -> None:
             pass
         save_settings()
     except PermissionError:
-        print("⚠️  无法读取设置文件（权限不足）, 使用默认设置")
+        print("⚠️  无法读取设置文件（权限不足），使用默认设置")
     except Exception as e:
-        print(f"⚠️  加载设置时出错 ({e}), 使用默认设置")
+        print(f"⚠️  加载设置时出错 ({e})，使用默认设置")
 
 def save_settings() -> None:
     """保存设置到文件"""
@@ -150,7 +216,7 @@ def save_settings() -> None:
 
 # ---------------------- ANSI 颜色代码 ----------------------
 class Colors:
-    """ANSI 颜色代码, 跨平台兼容"""
+    """ANSI 颜色代码，跨平台兼容"""
     RESET = '\033[0m'
     BOLD = '\033[1m'
     
@@ -266,7 +332,7 @@ def evaluate_piece(piece: str, row: int, col: int, turn: str) -> int:
 
 # ---------------------- 初始化棋盘 + 易位状态 + 过路兵 ----------------------
 def init_board() -> Tuple[BoardType, CastlingState, Optional[Position]]:
-    """初始化棋盘, 返回 (棋盘, 易位状态, 过路兵目标)"""
+    """初始化棋盘，返回 (棋盘, 易位状态, 过路兵目标)"""
     board = [
         ["r", "n", "b", "q", "k", "b", "n", "r"],
         ["p", "p", "p", "p", "p", "p", "p", "p"],
@@ -288,7 +354,7 @@ def init_board() -> Tuple[BoardType, CastlingState, Optional[Position]]:
 
 def safe_input(prompt: str, allow_empty: bool = False) -> str:
     """
-    安全的输入函数, 处理 KeyboardInterrupt
+    安全的输入函数，处理 KeyboardInterrupt
     """
     try:
         user_input = input(prompt).strip()
@@ -296,10 +362,10 @@ def safe_input(prompt: str, allow_empty: bool = False) -> str:
             return ""
         return user_input
     except KeyboardInterrupt:
-        print("\n\n检测到中断, 返回主菜单...")
+        print("\n\n检测到中断，返回主菜单...")
         return "quit"
     except EOFError:
-        print("\n\n检测到输入结束, 返回主菜单...")
+        print("\n\n检测到输入结束，返回主菜单...")
         return "quit"
 
 def validate_coordinate(coord: str) -> bool:
@@ -316,7 +382,7 @@ def validate_coordinate(coord: str) -> bool:
 
 def parse_move_input(user_input: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    解析走法输入, 返回 (from_pos, to_pos) 或 (None, None)
+    解析走法输入，返回 (from_pos, to_pos) 或 (None, None)
     """
     user_input = user_input.replace(' ', '').replace('-', '').lower()
     
@@ -477,7 +543,7 @@ def _build_history_lines(move_history: Optional['GameRecorder']) -> List[str]:
 
 def _print_board_merged(board_lines: List[str], history_lines: List[str]) -> None:
     """
-    合并打印棋盘和历史（棋盘左侧, 历史右侧）
+    合并打印棋盘和历史（棋盘左侧，历史右侧）
     """
     max_lines = max(len(board_lines), len(history_lines))
     
@@ -494,7 +560,7 @@ def print_board(
     selected_pos: Optional[Position] = None
 ) -> None:
     """
-    打印棋盘, 支持: 
+    打印棋盘，支持：
     - 走法历史显示在右侧
     - 彩色输出
     - 走法建议（绿色圆点标记合法走位）
@@ -569,8 +635,8 @@ def _handle_castling_moves(
     moves: List[Position]
 ) -> None:
     """
-    处理王车易位走法, 添加到 moves 列表中
-    前置条件: 当前棋子是王, 且 castling_state 不为 None
+    处理王车易位走法，添加到 moves 列表中
+    前置条件：当前棋子是王，且 castling_state 不为 None
     """
     if turn == "white" and row == WHITE_KING_ROW and col == KING_COL:
         if not castling_state["w_king"] and not is_square_attacked(board, WHITE_KING_ROW, KING_COL, "black"):
@@ -616,7 +682,7 @@ def get_raw_moves(
     moves = []
     piece_type = piece.upper()
 
-    # 车、象、后: 长距离走法
+    # 车、象、后：长距离走法
     if piece_type in ("R", "B", "Q"):
         sliding_dirs = {
             'R': [(-1, 0), (1, 0), (0, -1), (0, 1)],
@@ -637,7 +703,7 @@ def get_raw_moves(
                 next_row += delta_row
                 next_col += delta_col
 
-    # 马: 跳跃走法
+    # 马：跳跃走法
     elif piece_type == "N":
         knight_moves = [
             (-2, -1), (-2, 1), (-1, -2), (-1, 2),
@@ -650,7 +716,7 @@ def get_raw_moves(
                 if target == EMPTY or is_enemy(target, turn):
                     moves.append((next_row, next_col))
 
-    # 王: 一步走法 + 易位
+    # 王：一步走法 + 易位
     elif piece_type == "K":
         king_moves = [
             (-1, 0), (1, 0), (0, -1), (0, 1),
@@ -667,7 +733,7 @@ def get_raw_moves(
         if castling_state is not None:
             _handle_castling_moves(board, row, col, turn, castling_state, moves)
 
-    # 兵: 直走 + 斜吃 + 过路兵
+    # 兵：直走 + 斜吃 + 过路兵
     elif piece_type == "P":
         direction = PAWN_DIR_WHITE if turn == "white" else PAWN_DIR_BLACK
         start_row = PAWN_START_ROW_WHITE if turn == "white" else PAWN_START_ROW_BLACK
@@ -798,15 +864,15 @@ def promotion_select(is_white: bool, auto: bool = False) -> str:
     兵升变选择
     参数:
         is_white: 是否为白方
-        auto: 是否自动选择（AI 使用）, True 时直接升后
+        auto: 是否自动选择（AI 使用），True 时直接升后
     """
     if auto:
         return WQ if is_white else BQ
     
     while True:
-        print("\n兵到达底线, 请选择升变棋子: ")
+        print("\n兵到达底线，请选择升变棋子：")
         print("1 - 后(Q/q) | 2 - 车(R/r) | 3 - 象(B/b) | 4 - 马(N/n)")
-        sel = safe_input("输入数字: ")
+        sel = safe_input("输入数字：")
         
         if sel == "quit":
             return WQ if is_white else BQ
@@ -820,7 +886,7 @@ def promotion_select(is_white: bool, auto: bool = False) -> str:
         elif sel == "4":
             return WN if is_white else BN
         else:
-            print("❌ 输入无效, 请输入1/2/3/4! ")
+            print("❌ 输入无效，请输入1/2/3/4！")
 
 # ---------------------- 落子逻辑辅助函数 ----------------------
 
@@ -852,7 +918,7 @@ def _handle_pawn_moves(
         is_capture = True
         is_en_passant = True
     
-    # 兵一次走两格, 记录过路兵坐标
+    # 兵一次走两格，记录过路兵坐标
     if piece.upper() == "P" and dr_abs == PAWN_DOUBLE_STEP:
         ep_row = (from_row + to_row) // 2
         new_ep = (ep_row, to_col)
@@ -949,7 +1015,7 @@ def _handle_promotion(
     """
     处理兵升变
     参数:
-        auto: 是否自动选择（AI 使用）, True 时直接升后
+        auto: 是否自动选择（AI 使用），True 时直接升后
     返回: promotion_piece 或 None
     """
     piece = board[to_row][to_col]
@@ -982,7 +1048,7 @@ def make_move(
     """
     执行走法
     参数:
-        auto_promotion: 是否自动升变（AI 使用）, True 时 AI 自动升后
+        auto_promotion: 是否自动升变（AI 使用），True 时 AI 自动升后
     返回: (new_ep, move_record)
     """
     piece = board[from_row][from_col]
@@ -1039,7 +1105,7 @@ def undo_move(
     castling_state: CastlingState,
     move_record: MoveRecord
 ) -> Optional[Position]:
-    """撤销一步走法, 返回之前的过路兵目标"""
+    """撤销一步走法，返回之前的过路兵目标"""
     from_row, from_col = move_record['from_row'], move_record['from_col']
     to_row, to_col = move_record['to_row'], move_record['to_col']
     piece = move_record['piece']
@@ -1314,7 +1380,7 @@ class GameRecorder:
         return pgn
     
     def save_pgn(self, filename: Optional[str] = None) -> str:
-        """保存PGN文件, 带错误处理"""
+        """保存PGN文件，带错误处理"""
         if filename is None:
             timestamp = self.start_time.strftime("%Y%m%d_%H%M%S")
             filename = f"chess_game_{timestamp}.pgn"
@@ -1380,6 +1446,40 @@ def evaluate_board(board: BoardType) -> int:
                 score -= evaluate_piece(piece, row, col, 'black')
     return score
 
+# ---------------------- 格式化走法（用于显示） ----------------------
+def _format_move_for_display(move: Optional[MoveType], turn: str) -> str:
+    """将走法格式化为可读字符串"""
+    if move is None:
+        return "无走法"
+    
+    (from_row, from_col), (to_row, to_col) = move
+    from_pos = row_col_to_pos(from_row, from_col)
+    to_pos = row_col_to_pos(to_row, to_col)
+    return f"{from_pos}{to_pos}"
+
+# ---------------------- 棋盘转FEN ----------------------
+def board_to_fen(board: BoardType, turn: str, castling_state: CastlingState, en_passant_target: Optional[Position]) -> str:
+    """
+    将棋盘转换为 FEN 字符串（简化版，只包含棋盘位置）
+    格式: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR
+    """
+    fen_rows = []
+    for row in board:
+        empty_count = 0
+        fen_row = ""
+        for piece in row:
+            if piece == EMPTY:
+                empty_count += 1
+            else:
+                if empty_count > 0:
+                    fen_row += str(empty_count)
+                    empty_count = 0
+                fen_row += piece
+        if empty_count > 0:
+            fen_row += str(empty_count)
+        fen_rows.append(fen_row)
+    return '/'.join(fen_rows)
+
 # ---------------------- AI极小极大搜索 ----------------------
 def minimax(
     board: BoardType,
@@ -1388,21 +1488,35 @@ def minimax(
     beta: float,
     is_maximizing: bool,
     castling_state: CastlingState,
-    en_passant_target: Optional[Position]
-) -> Tuple[float, Optional[MoveType]]:
+    en_passant_target: Optional[Position],
+    current_depth: int = 0,
+    max_depth: int = 0,
+    thinking_lines: Optional[List[str]] = None
+) -> Tuple[float, Optional[MoveType], List[MoveType]]:
+    """
+    返回: (评估值, 最佳走法, 候选走法列表)
+    候选走法列表用于实现 AI 随机性
+    """
+    if thinking_lines is None:
+        thinking_lines = []
+    
     if depth == 0:
-        return evaluate_board(board), None
+        return evaluate_board(board), None, []
     
     turn = "white" if is_maximizing else "black"
     moves = get_all_legal_moves(board, turn, castling_state, en_passant_target)
     
     if not moves:
         if is_king_in_check(board, turn):
-            return -MATE_SCORE + depth if is_maximizing else MATE_SCORE - depth, None
+            return -MATE_SCORE + depth if is_maximizing else MATE_SCORE - depth, None, []
         else:
-            return 0, None
+            return 0, None, []
     
     best_move = random.choice(moves) if moves else None
+    candidates = []
+    use_randomness = SETTINGS.get('ai_randomness', True)
+    threshold = RANDOMNESS_THRESHOLD if use_randomness else 0
+    show_thinking = SETTINGS.get('show_ai_thinking', True)
     
     if is_maximizing:
         max_eval = float('-inf')
@@ -1412,14 +1526,26 @@ def minimax(
             from_row, from_col = move[0]
             to_row, to_col = move[1]
             new_ep, _ = make_move(temp_board, from_row, from_col, to_row, to_col, temp_castling, turn, en_passant_target, auto_promotion=True)
-            eval, _ = minimax(temp_board, depth - 1, alpha, beta, False, temp_castling, new_ep)
+            eval, _, _ = minimax(temp_board, depth - 1, alpha, beta, False, temp_castling, new_ep, 
+                                 current_depth + 1, max_depth, thinking_lines)
+            
             if eval > max_eval:
                 max_eval = eval
                 best_move = move
+                candidates = [move]
+            elif eval > max_eval - threshold:
+                candidates.append(move)
+            
             alpha = max(alpha, eval)
             if beta <= alpha:
                 break
-        return max_eval, best_move
+        
+        # 记录思考过程（白方视角）
+        if show_thinking and depth == max_depth:
+            move_desc = _format_move_for_display(best_move, turn)
+            thinking_lines.append(f"  深度 {max_depth - depth + 1}: {move_desc} 评估: {max_eval:+.2f}")
+        
+        return max_eval, best_move, candidates
     else:
         min_eval = float('inf')
         for move in moves:
@@ -1428,14 +1554,26 @@ def minimax(
             from_row, from_col = move[0]
             to_row, to_col = move[1]
             new_ep, _ = make_move(temp_board, from_row, from_col, to_row, to_col, temp_castling, turn, en_passant_target, auto_promotion=True)
-            eval, _ = minimax(temp_board, depth - 1, alpha, beta, True, temp_castling, new_ep)
+            eval, _, _ = minimax(temp_board, depth - 1, alpha, beta, True, temp_castling, new_ep,
+                                 current_depth + 1, max_depth, thinking_lines)
+            
             if eval < min_eval:
                 min_eval = eval
                 best_move = move
+                candidates = [move]
+            elif eval < min_eval + threshold:
+                candidates.append(move)
+            
             beta = min(beta, eval)
             if beta <= alpha:
                 break
-        return min_eval, best_move
+        
+        # 记录思考过程（黑方视角）
+        if show_thinking and depth == max_depth:
+            move_desc = _format_move_for_display(best_move, turn)
+            thinking_lines.append(f"  深度 {max_depth - depth + 1}: {move_desc} 评估: {min_eval:+.2f}")
+        
+        return min_eval, best_move, candidates
 
 # ---------------------- AI走棋 ---------------------
 def get_ai_move(
@@ -1444,15 +1582,61 @@ def get_ai_move(
     en_passant_target: Optional[Position],
     depth: int
 ) -> Optional[MoveType]:
+    """获取 AI 走法（优先使用开局库，加入随机性）"""
     all_moves = get_all_legal_moves(board, "black", castling_state, en_passant_target)
     if not all_moves:
         return None
     
-    _, best_move = minimax(board, depth, float('-inf'), float('inf'), False, 
-                           castling_state, en_passant_target)
+    # 1. 检查开局库
+    try:
+        fen = board_to_fen(board, "black", castling_state, en_passant_target)
+        book_move_str = OPENING_BOOK.get(fen)
+        
+        if book_move_str:
+            from_pos, to_pos = book_move_str[:2], book_move_str[2:]
+            from_row, from_col = pos_to_row_col(from_pos)
+            to_row, to_col = pos_to_row_col(to_pos)
+            
+            for move in all_moves:
+                (fr, fc), (tr, tc) = move
+                if fr == from_row and fc == from_col and tr == to_row and tc == to_col:
+                    return move
+    except Exception:
+        pass
+    
+    # 2. 准备思考过程显示
+    show_thinking = SETTINGS.get('show_ai_thinking', True)
+    thinking_lines = []
+    
+    if show_thinking:
+        print(f"\n🧠 AI 思考中... (深度 {depth})")
+    
+    # 3. 使用 AI 搜索
+    _, best_move, candidates = minimax(
+        board, depth, float('-inf'), float('inf'), False, 
+        castling_state, en_passant_target,
+        current_depth=0, max_depth=depth, thinking_lines=thinking_lines
+    )
+    
+    # 4. 显示思考过程
+    if show_thinking:
+        for line in thinking_lines:
+            print(line)
+    
+    # 从候选走法中随机选择
+    if candidates:
+        selected_move = random.choice(candidates)
+        if show_thinking:
+            selected_desc = _format_move_for_display(selected_move, "black")
+            print(f"  ✅ 选择: {selected_desc}")
+        return selected_move
     
     if best_move is None:
         best_move = random.choice(all_moves)
+    
+    if show_thinking and best_move:
+        selected_desc = _format_move_for_display(best_move, "black")
+        print(f"  ✅ 选择: {selected_desc}")
     
     return best_move
 
@@ -1469,19 +1653,19 @@ def _handle_game_end(
     """处理游戏结束"""
     clear_terminal()
     print_board(board, last_move_info, recorder)
-    print(f"\n🏁 游戏结束! 原因: {reason}")
+    print(f"\n🏁 游戏结束！原因: {reason}")
     
     if result == "1-0":
-        print("🎉 白方胜利! ")
+        print("🎉 白方胜利！")
     elif result == "0-1":
-        print("🎉 黑方胜利! ")
+        print("🎉 黑方胜利！")
     else:
-        print("🤝 和棋! ")
+        print("🤝 和棋！")
     
     recorder.set_result(result)
     recorder.display_history()
     
-    save_choice = safe_input("\n是否保存PGN文件? (y/n): ").strip().lower()
+    save_choice = safe_input("\n是否保存PGN文件？(y/n): ").strip().lower()
     if save_choice == 'y':
         try:
             filename = recorder.save_pgn()
@@ -1553,14 +1737,14 @@ def _process_suggestion_mode_input(
         print(f"半步计数: {recorder.halfmove_clock}/100 (50步规则)")
         
         if is_king_in_check(board, turn):
-            print(f"⚠️  注意: {turn}方的王被将军了! ")
+            print(f"⚠️  注意：{turn}方的王被将军了！")
         
         if selected_pos:
             row, col = selected_pos
             piece = board[row][col]
             print(f"\n已选中棋子: {row_col_to_pos(row, col)} ({piece})")
             print(f"合法走法数: {len(candidate_moves) if candidate_moves else 0}")
-            print("请输入目标位置（如 e4）, 或输入 'cancel' 取消")
+            print("请输入目标位置（如 e4），或输入 'cancel' 取消")
         else:
             print(f"\n【{turn}方回合】请选择要移动的棋子（如 e2）")
         
@@ -1601,13 +1785,13 @@ def _process_suggestion_mode_input(
                     selected_pos = (row, col)
                     candidate_moves = get_legal_moves(board, row, col, turn, castling_state, en_passant_target)
                     if not candidate_moves:
-                        print("❌ 这个棋子没有合法走法! ")
+                        print("❌ 这个棋子没有合法走法！")
                         selected_pos = None
                         candidate_moves = None
                         input("\n回车继续...")
                         continue
                 else:
-                    print(f"❌ 这不是 {turn} 方的棋子! ")
+                    print(f"❌ 这不是 {turn} 方的棋子！")
                     input("\n回车继续...")
                     continue
             except InvalidInputError as e:
@@ -1624,7 +1808,7 @@ def _process_suggestion_mode_input(
             try:
                 from_pos, to_pos = parse_move_input(user_input)
                 if from_pos is None or to_pos is None:
-                    print("❌ 格式错误! 示例: e4 或 e2-e4")
+                    print("❌ 格式错误！示例：e4 或 e2-e4")
                     input("\n回车继续...")
                     continue
                 
@@ -1632,14 +1816,14 @@ def _process_suggestion_mode_input(
                 from_row, from_col = selected_pos
                 
                 if candidate_moves and (to_row, to_col) not in candidate_moves:
-                    print("❌ 非法走法! 请选择绿色圆点标记的位置")
+                    print("❌ 非法走法！请选择绿色圆点标记的位置")
                     input("\n回车继续...")
                     continue
                 
                 en_passant_target, move_record = make_move(
                     board, from_row, from_col, to_row, to_col, 
                     castling_state, turn, en_passant_target,
-                    auto_promotion=False  # 玩家手动选择
+                    auto_promotion=False
                 )
                 move_count += 1
                 last_move_info = ((from_row, from_col), (to_row, to_col))
@@ -1656,7 +1840,7 @@ def _process_suggestion_mode_input(
                 input("\n回车继续...")
                 continue
             except Exception as e:
-                print(f"❌ 无效目标: {e}")
+                print(f"❌ 无效目标：{e}")
                 input("\n回车继续...")
                 continue
         else:
@@ -1681,7 +1865,7 @@ def _process_traditional_mode_input(
     返回: (move_executed, new_en_passant, new_last_move_info, new_move_count, should_quit)
     """
     tip = "【白方回合 大写棋子】" if turn == "white" else "【黑方回合 小写棋子】"
-    user_input = safe_input(f"{tip} 输入走棋: ")
+    user_input = safe_input(f"{tip} 输入走棋：")
     if not user_input:
         return False, en_passant_target, last_move_info, move_count, False
     
@@ -1701,7 +1885,7 @@ def _process_traditional_mode_input(
     # 解析走法
     from_pos, to_pos = parse_move_input(user_input)
     if from_pos is None or to_pos is None:
-        print("❌ 格式错误! 示例: e2e4 或 e2-e4")
+        print("❌ 格式错误！示例：e2e4 或 e2-e4")
         input("\n回车继续...")
         return False, en_passant_target, last_move_info, move_count, False
     
@@ -1719,20 +1903,20 @@ def _process_traditional_mode_input(
     
     piece = board[from_row][from_col]
     if not is_same_side(piece, turn):
-        print(f"❌ 当前回合不能移动该棋子! ")
+        print(f"❌ 当前回合不能移动该棋子！")
         input("\n回车继续...")
         return False, en_passant_target, last_move_info, move_count, False
     
     legal = get_legal_moves(board, from_row, from_col, turn, castling_state, en_passant_target)
     if (to_row, to_col) not in legal:
-        print("❌ 非法走棋! ")
+        print("❌ 非法走棋！")
         input("\n回车继续...")
         return False, en_passant_target, last_move_info, move_count, False
     
     en_passant_target, move_record = make_move(
         board, from_row, from_col, to_row, to_col, 
         castling_state, turn, en_passant_target,
-        auto_promotion=False  # 玩家手动选择
+        auto_promotion=False
     )
     move_count += 1
     last_move_info = ((from_row, from_col), (to_row, to_col))
@@ -1770,7 +1954,7 @@ def _handle_player_turn(
     
     # 显示将军提示
     if is_king_in_check(board, turn):
-        print(f"⚠️  注意: {turn}方的王被将军了! ")
+        print(f"⚠️  注意：{turn}方的王被将军了！")
     
     # 处理玩家走法
     if show_suggestions:
@@ -1793,7 +1977,7 @@ def _handle_player_turn(
     if move_executed is None and show_suggestions:
         return "undo", None, None, en_passant_target, last_move_info, move_count, None
     
-    # 如果走法未执行, 返回 'invalid' 状态
+    # 如果走法未执行，返回 'invalid' 状态
     if move_executed is False:
         return "invalid", None, None, en_passant_target, last_move_info, move_count, None
     
@@ -1811,28 +1995,28 @@ def _handle_ai_turn(
     处理 AI 走棋
     返回: (new_en_passant, new_last_move_info, new_move_count, should_return)
     """
-    print("\n✅ 落子成功, AI思考中...", end="", flush=True)
+    print("\n✅ 落子成功，AI思考中...", end="", flush=True)
     
     start_time = time.time()
     best_move = get_ai_move(board, castling_state, en_passant_target, SETTINGS['ai_depth'])
     elapsed = time.time() - start_time
-    print(f" 完成! ({elapsed:.2f}s)")
+    print(f" 完成！({elapsed:.2f}s)")
     
     if best_move is None:
         # AI无走法
         if is_king_in_check(board, "black"):
             clear_terminal()
             print_board(board, last_move_info, recorder)
-            print("\n🎉 将杀! 你赢了! ")
+            print("\n🎉 将杀！你赢了！")
             recorder.set_result("1-0")
         else:
             clear_terminal()
             print_board(board, last_move_info, recorder)
-            print("\n🤝 逼和! ")
+            print("\n🤝 逼和！")
             recorder.set_result("1/2-1/2")
         
         recorder.display_history()
-        save_choice = safe_input("\n是否保存PGN文件? (y/n): ").strip().lower()
+        save_choice = safe_input("\n是否保存PGN文件？(y/n): ").strip().lower()
         if save_choice == 'y':
             try:
                 filename = recorder.save_pgn()
@@ -1847,7 +2031,7 @@ def _handle_ai_turn(
     en_passant_target, ai_record = make_move(
         board, from_row, from_col, to_row, to_col,
         castling_state, "black", en_passant_target,
-        auto_promotion=True  # AI 自动升变
+        auto_promotion=True
     )
     move_count += 1
     last_move_info = ((from_row, from_col), (to_row, to_col))
@@ -1872,10 +2056,10 @@ def _handle_ai_turn(
         if not ai_moves:
             clear_terminal()
             print_board(board, last_move_info, recorder)
-            print("\n🎉 将杀! 你赢了! ")
+            print("\n🎉 将杀！你赢了！")
             recorder.set_result("1-0")
             recorder.display_history()
-            save_choice = safe_input("\n是否保存PGN文件? (y/n): ").strip().lower()
+            save_choice = safe_input("\n是否保存PGN文件？(y/n): ").strip().lower()
             if save_choice == 'y':
                 try:
                     filename = recorder.save_pgn()
@@ -1898,7 +2082,7 @@ def _handle_ai_turn(
 
 # ---------------------- 人机对战 ----------------------
 def play_ai() -> None:
-    """人机对战, 带错误处理"""
+    """人机对战，带错误处理"""
     try:
         board, castling_state, en_passant_target = init_board()
         recorder = GameRecorder()
@@ -1913,27 +2097,29 @@ def play_ai() -> None:
         show_suggestions = SETTINGS.get('show_suggestions', True)
         
         print("=========== 简易国际象棋人机对战 ===========")
-        print("操作说明: ")
-        print("  1. 你操控白方大写, AI黑方小写")
-        print("  2. 王车易位: e1g1(短) / e1c1(长)")
-        print("  3. 吃过路兵: 敌方兵双走后斜一格吃掉, 仅限下一回合")
+        print("操作说明：")
+        print("  1. 你操控白方大写，AI黑方小写")
+        print("  2. 王车易位：e1g1(短) / e1c1(长)")
+        print("  3. 吃过路兵：敌方兵双走后斜一格吃掉，仅限下一回合")
         print("  4. 兵走到底线可升变后/车/象/马")
         
         if show_suggestions:
-            print("  5. 走法方式: 先输入棋子位置(如 e2), 再输入目标位置(如 e4)")
+            print("  5. 走法方式：先输入棋子位置(如 e2)，再输入目标位置(如 e4)")
             print("  6. 输入 'cancel' 取消选中棋子")
             print("  7. 输入 'quit' 返回菜单")
             print("  8. 输入 'history' 查看历史走法")
             print("  9. 输入 'save' 保存PGN文件")
             print("  10. 输入 'undo' 悔棋（撤销上一步）")
-            print("  11. AI难度: 深度{SETTINGS['ai_depth']}层\n")
+            print("  11. AI使用开局库（前几步秒响应）")
+            print("  12. AI难度：深度{SETTINGS['ai_depth']}层\n")
         else:
-            print("  5. 走法方式: 直接输入完整走法（如 e2e4 或 e2-e4）")
+            print("  5. 走法方式：直接输入完整走法（如 e2e4 或 e2-e4）")
             print("  6. 输入 'quit' 返回菜单")
             print("  7. 输入 'history' 查看历史走法")
             print("  8. 输入 'save' 保存PGN文件")
             print("  9. 输入 'undo' 悔棋（撤销上一步）")
-            print("  10. AI难度: 深度{SETTINGS['ai_depth']}层\n")
+            print("  10. AI使用开局库（前几步秒响应）")
+            print("  11. AI难度：深度{SETTINGS['ai_depth']}层\n")
         
         while True:
             clear_terminal()
@@ -1952,21 +2138,18 @@ def play_ai() -> None:
             elif status == "quit":
                 break
             elif status == "invalid":
-                # 非法走法, 继续等待玩家输入
                 continue
             elif status == "undo":
                 if len(recorder.move_records) < 2:
-                    print("❌ 没有足够的走法可以悔棋! ")
+                    print("❌ 没有足够的走法可以悔棋！")
                     input("\n回车继续...")
                     continue
                 
-                # 撤销AI走法
                 ai_record = recorder.undo_last_move()
                 if ai_record:
                     en_passant_target = undo_move(board, castling_state, ai_record)
                     recorder.remove_last_move_from_history()
                 
-                # 撤销玩家走法
                 player_record = recorder.undo_last_move()
                 if player_record:
                     en_passant_target = undo_move(board, castling_state, player_record)
@@ -1984,10 +2167,10 @@ def play_ai() -> None:
                 if not ai_moves:
                     clear_terminal()
                     print_board(board, last_move_info, recorder)
-                    print("\n🎉 将杀! 你赢了! ")
+                    print("\n🎉 将杀！你赢了！")
                     recorder.set_result("1-0")
                     recorder.display_history()
-                    save_choice = safe_input("\n是否保存PGN文件? (y/n): ").strip().lower()
+                    save_choice = safe_input("\n是否保存PGN文件？(y/n): ").strip().lower()
                     if save_choice == 'y':
                         try:
                             filename = recorder.save_pgn()
@@ -2017,7 +2200,7 @@ def play_ai() -> None:
             input("\n回车下一回合...")
     
     except KeyboardInterrupt:
-        print("\n\n游戏被中断, 返回主菜单...")
+        print("\n\n游戏被中断，返回主菜单...")
         input("回车继续...")
     except Exception as e:
         print(f"\n❌ 游戏发生错误: {e}")
@@ -2026,7 +2209,7 @@ def play_ai() -> None:
 
 # ---------------------- 人人对战 ----------------------
 def play_pvp() -> None:
-    """人人对战, 带错误处理"""
+    """人人对战，带错误处理"""
     try:
         board, castling_state, en_passant_target = init_board()
         turn = "white"
@@ -2042,13 +2225,13 @@ def play_pvp() -> None:
         show_suggestions = SETTINGS.get('show_suggestions', True)
         
         print("=========== 人人对战 ===========")
-        print("白先行, 支持易位、过路兵、兵升变")
+        print("白先行，支持易位、过路兵、兵升变")
         
         if show_suggestions:
-            print("走法方式: 先输入棋子位置, 再输入目标位置")
+            print("走法方式：先输入棋子位置，再输入目标位置")
             print("输入 'cancel' 取消选中棋子")
         else:
-            print("走法方式: 直接输入完整走法（如 e2e4 或 e2-e4）")
+            print("走法方式：直接输入完整走法（如 e2e4 或 e2-e4）")
         
         print("输入 'history' 查看历史走法")
         print("输入 'save' 保存PGN文件")
@@ -2074,14 +2257,14 @@ def play_pvp() -> None:
             if not all_moves:
                 if is_king_in_check(board, turn):
                     winner = "黑方" if turn == "white" else "白方"
-                    print(f"💀 将杀! {winner}获胜! ")
+                    print(f"💀 将杀！{winner}获胜！")
                     recorder.set_result("0-1" if turn == "white" else "1-0")
                 else:
-                    print("🤝 逼和! ")
+                    print("🤝 逼和！")
                     recorder.set_result("1/2-1/2")
                 
                 recorder.display_history()
-                save_choice = safe_input("\n是否保存PGN文件? (y/n): ").strip().lower()
+                save_choice = safe_input("\n是否保存PGN文件？(y/n): ").strip().lower()
                 if save_choice == 'y':
                     try:
                         filename = recorder.save_pgn()
@@ -2091,7 +2274,7 @@ def play_pvp() -> None:
                 input("\n回车返回菜单...")
                 break
             
-            # 玩家回合（人人模式, 无AI, turn 由玩家控制）
+            # 玩家回合（人人模式，无AI，turn 由玩家控制）
             status, result, reason, en_passant_target, last_move_info, move_count, _ = \
                 _handle_player_turn(board, turn, castling_state, en_passant_target,
                                     recorder, last_move_info, move_count, show_suggestions, False)
@@ -2102,11 +2285,10 @@ def play_pvp() -> None:
             elif status == "quit":
                 break
             elif status == "invalid":
-                # 非法走法, 继续等待玩家输入
                 continue
             elif status == "undo":
                 if len(recorder.move_records) < 1:
-                    print("❌ 没有走法可以悔棋! ")
+                    print("❌ 没有走法可以悔棋！")
                     input("\n回车继续...")
                     continue
                 
@@ -2125,11 +2307,11 @@ def play_pvp() -> None:
             
             # 切换回合
             turn = "black" if turn == "white" else "white"
-            print("✅ 落子完成, 切换对手")
+            print("✅ 落子完成，切换对手")
             input("\n回车切换棋盘...")
     
     except KeyboardInterrupt:
-        print("\n\n游戏被中断, 返回主菜单...")
+        print("\n\n游戏被中断，返回主菜单...")
         input("回车继续...")
     except Exception as e:
         print(f"\n❌ 游戏发生错误: {e}")
@@ -2140,28 +2322,30 @@ def play_pvp() -> None:
 def show_help() -> None:
     clear_terminal()
     print("==================== 游戏帮助 ====================")
-    print("1.菜单选项: 1人机 2人人 3帮助 4设置 5退出")
-    print("2.走法方式（由设置中的'走法建议'控制）: ")
-    print("   ✅ 开启: 两步走法, 先选棋子再选目标, 显示合法走位")
-    print("   ❌ 关闭: 传统模式, 直接输入完整走法（如 e2e4）")
-    print("3.棋子: 白大写 KQRNBP | 黑小写 kqrnbp")
-    print("4.特殊规则: ")
-    print("   ① 王车易位: 王、车未移动, 中间无棋子")
+    print("1.菜单选项：1人机 2人人 3帮助 4设置 5退出")
+    print("2.走法方式（由设置中的'走法建议'控制）：")
+    print("   ✅ 开启：两步走法，先选棋子再选目标，显示合法走位")
+    print("   ❌ 关闭：传统模式，直接输入完整走法（如 e2e4）")
+    print("3.棋子：白大写 KQRNBP | 黑小写 kqrnbp")
+    print("4.特殊规则：")
+    print("   ①王车易位：王、车未移动，中间无棋子")
     print("     白短e1g1 / 白长e1c1 | 黑短e8g8 / 黑长e8c8")
-    print("   ② 吃过路兵: 敌方兵一步两格, 斜一格吃掉")
-    print("   ③ 兵升变: 兵走到底线, 可选后/车/象/马; AI自动升后")
-    print("5.交互命令: ")
-    print("   · 'history' 查看历史走法")
-    print("   · 'save' 保存PGN文件")
-    print("   · 'undo' 悔棋")
-    print("   · 'quit' 返回主菜单")
-    print("   · 'cancel' 取消选中棋子（走法建议模式）")
-    print("6.设置功能: ")
-    print("   · 切换棋子显示样式（字母 ↔ Unicode符号）")
-    print("   · 调整AI难度（2=简单 / 3=中等 / 4=困难）")
-    print("   · 走法历史显示（开启/关闭）")
-    print("   · 彩色输出（开启/关闭）")
-    print("   · 走法建议（开启/关闭）⭐")
+    print("   ②吃过路兵：敌方兵一步两格，斜一格吃掉")
+    print("   ③兵升变：兵走到底线，可选后/车/象/马；AI自动升后")
+    print("5.交互命令：")
+    print("   - 'history' 查看历史走法")
+    print("   - 'save' 保存PGN文件")
+    print("   - 'undo' 悔棋")
+    print("   - 'quit' 返回主菜单")
+    print("   - 'cancel' 取消选中棋子（走法建议模式）")
+    print("6.设置功能：")
+    print("   - 切换棋子显示样式（字母 ↔ Unicode符号）")
+    print("   - 调整AI难度（2=简单 / 3=中等 / 4=困难）")
+    print("   - 走法历史显示（开启/关闭）")
+    print("   - 彩色输出（开启/关闭）")
+    print("   - 走法建议（开启/关闭）")
+    print("   - AI随机性（开启/关闭）⭐")
+    print("   - AI思考过程（开启/关闭）⭐")
     print("==================================================")
     input("\n回车返回菜单...")
 
@@ -2170,17 +2354,27 @@ def show_settings() -> None:
     while True:
         clear_terminal()
         print("\n==================== 设置 ====================")
-        print("当前设置(输入数字进行对应设置): ")
-        print("  0. 返回主菜单")
+        print("当前设置：")
         print(f"  1. 棋子样式: {'Unicode符号 ♔♚' if SETTINGS['piece_style'] == 'unicode' else '字母 KQ'}")
         print(f"  2. AI难度: 深度 {SETTINGS['ai_depth']} 层 "
               f"({'简单' if SETTINGS['ai_depth'] <= 2 else '中等' if SETTINGS['ai_depth'] == 3 else '困难'})")
         print(f"  3. 走法历史: {'✅ 开启' if SETTINGS['show_history'] else '❌ 关闭'}")
         print(f"  4. 彩色输出: {'✅ 开启' if SETTINGS.get('use_colors', True) else '❌ 关闭'}")
-        print(f"  5. 走法建议: {'✅ 开启' if SETTINGS.get('show_suggestions', True) else '❌ 关闭'} ")
+        print(f"  5. 走法建议: {'✅ 开启' if SETTINGS.get('show_suggestions', True) else '❌ 关闭'}")
+        print(f"  6. AI随机性: {'✅ 开启' if SETTINGS.get('ai_randomness', True) else '❌ 关闭'}")
+        print(f"  7. AI思考过程: {'✅ 开启' if SETTINGS.get('show_ai_thinking', True) else '❌ 关闭'}")
+        print("\n请选择要修改的设置：")
+        print("  1 - 切换棋子样式（字母 ↔ Unicode符号）")
+        print("  2 - 调整AI难度（2=简单 / 3=中等 / 4=困难）")
+        print("  3 - 切换走法历史显示（开启/关闭）")
+        print("  4 - 切换彩色输出（开启/关闭）")
+        print("  5 - 切换走法建议（开启/关闭）")
+        print("  6 - 切换AI随机性（开启/关闭）")
+        print("  7 - 切换AI思考过程显示（开启/关闭）")
+        print("  0 - 返回主菜单")
         print("==============================================")
         
-        choice = safe_input("请输入数字选择: ")
+        choice = safe_input("请输入数字选择：")
         if choice == "quit":
             save_settings()
             break
@@ -2191,27 +2385,27 @@ def show_settings() -> None:
         elif choice == "1":
             if SETTINGS['piece_style'] == 'letter':
                 SETTINGS['piece_style'] = 'unicode'
-                print("\n✅ 已切换到 Unicode 符号样式(警告, 部分老旧终端可能无法显示)")
+                print("\n✅ 已切换到 Unicode 符号样式")
             else:
                 SETTINGS['piece_style'] = 'letter'
                 print("\n✅ 已切换到 字母 样式")
             
-            print("\n预览效果: ")
+            print("\n预览效果：")
             print("  字母样式: K Q R B N P")
             print("  Unicode样式: ♔ ♕ ♖ ♗ ♘ ♙")
-            print("\n设置已保存, 按回车返回设置菜单...")
+            print("\n设置已保存，按回车返回设置菜单...")
             input()
         elif choice == "2":
             while True:
-                print("\n选择AI难度: ")
-                print("  2 - 简单（思考快, 但棋力弱）")
+                print("\n选择AI难度：")
+                print("  2 - 简单（思考快，但棋力弱）")
                 print("  3 - 中等（平衡）")
-                print("  4 - 困难（思考慢, 棋力强）")
-                depth_choice = safe_input("请输入 2/3/4: ")
+                print("  4 - 困难（思考慢，棋力强）")
+                depth_choice = safe_input("请输入 2/3/4：")
                 if depth_choice in ('2', '3', '4'):
                     SETTINGS['ai_depth'] = int(depth_choice)
                     print(f"\n✅ AI深度已设置为 {SETTINGS['ai_depth']} 层")
-                    print("   （深度4以上会明显变慢, 不建议更高）")
+                    print("   （深度4以上会明显变慢，不建议更高）")
                     input("\n回车继续...")
                     break
                 else:
@@ -2226,30 +2420,48 @@ def show_settings() -> None:
             SETTINGS['use_colors'] = not SETTINGS.get('use_colors', True)
             status = "开启" if SETTINGS['use_colors'] else "关闭"
             print(f"\n✅ 彩色输出已{status}")
-            print("\n预览效果: ")
+            print("\n预览效果：")
             if SETTINGS['use_colors']:
                 print(f"  {Colors.BRIGHT_WHITE}白方棋子{Colors.RESET} 和 {Colors.RED}黑方棋子{Colors.RESET}")
                 print(f"  高亮: {Colors.BG_YELLOW}{Colors.BLACK}K{Colors.RESET}")
             else:
-                print("  彩色已关闭, 所有棋子显示为普通字符")
+                print("  彩色已关闭，所有棋子显示为普通字符")
             input("\n回车继续...")
         elif choice == "5":
             SETTINGS['show_suggestions'] = not SETTINGS.get('show_suggestions', True)
             status = "开启" if SETTINGS['show_suggestions'] else "关闭"
             print(f"\n✅ 走法建议已{status}")
             if SETTINGS['show_suggestions']:
-                print("   走法建议模式: 先选棋子, 再输入目标位置")
+                print("   走法建议模式：先选棋子，再输入目标位置")
                 print("   绿色圆点标记合法走法位置")
             else:
-                print("   传统模式: 直接输入完整走法（如 e2e4）")
+                print("   传统模式：直接输入完整走法（如 e2e4）")
+            input("\n回车继续...")
+        elif choice == "6":
+            SETTINGS['ai_randomness'] = not SETTINGS.get('ai_randomness', True)
+            status = "开启" if SETTINGS['ai_randomness'] else "关闭"
+            print(f"\n✅ AI随机性已{status}")
+            if SETTINGS['ai_randomness']:
+                print("   AI会在多个近似走法中随机选择，对局更多变")
+            else:
+                print("   AI将始终选择最佳走法（确定性）")
+            input("\n回车继续...")
+        elif choice == "7":
+            SETTINGS['show_ai_thinking'] = not SETTINGS.get('show_ai_thinking', True)
+            status = "开启" if SETTINGS['show_ai_thinking'] else "关闭"
+            print(f"\n✅ AI思考过程显示已{status}")
+            if SETTINGS['show_ai_thinking']:
+                print("   AI走棋时会显示每层深度的思考结果")
+            else:
+                print("   AI走棋时只显示耗时，不显示思考过程")
             input("\n回车继续...")
         else:
-            print("❌ 输入无效, 请重新选择")
+            print("❌ 输入无效，请重新选择")
             input("\n回车继续...")
 
 # ---------------------- 主菜单 ----------------------
 def main() -> None:
-    """主程序入口, 带全局错误处理"""
+    """主程序入口，带全局错误处理"""
     try:
         load_settings()
     except Exception as e:
@@ -2275,7 +2487,7 @@ def main() -> None:
             print("| 5 - 退出游戏                                           |")
             print("==========================================================")
             
-            sel = safe_input("请输入数字选择: ")
+            sel = safe_input("请输入数字选择：")
             
             if sel == "1":
                 play_ai()
@@ -2287,15 +2499,15 @@ def main() -> None:
                 show_settings()
             elif sel == "5" or sel == "quit":
                 clear_terminal()
-                print("游戏退出, 再见! ")
+                print("游戏退出，再见！")
                 break
             else:
-                print("❌ 输入无效, 请输入1/2/3/4/5")
+                print("❌ 输入无效，请输入1/2/3/4/5")
                 input("回车继续...")
         
         except KeyboardInterrupt:
             clear_terminal()
-            print("\n游戏被中断, 再见! ")
+            print("\n游戏被中断，再见！")
             break
         except Exception as e:
             print(f"\n❌ 发生错误: {e}")
