@@ -4,9 +4,7 @@
 
 **纯 Python · 零依赖 · 完整规则 · AI 对战**  
 
-[![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)](https://www.python.org/) [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Stars](https://img.shields.io/github/stars/TheSilentOne-creator/chess-cli)](https://github.com/TheSilentOne-creator/chess-cli/stargazers)
 
 **在终端里体验完整的国际象棋对局**  
@@ -47,12 +45,12 @@
 
 ## 🚀 快速开始
 
-### 环境要求
+**环境要求**  
 
 - Python 3.6 及以上
 - 不需要安装任何第三方库
 
-### 克隆并运行
+**克隆并运行**  
 
 ```bash
 git clone https://github.com/TheSilentOne-creator/chess-cli.git
@@ -60,7 +58,7 @@ cd chess-cli
 python chess.py
 ```
 
-### 游戏界面预览
+**游戏界面预览**  
 
 ```text
 =========== 国际象棋 ===========
@@ -89,7 +87,7 @@ python chess.py
 
 ## ⌨️ 操作指南
 
-### 走法格式
+**走法格式**  
 
 ```bash
 e2e4     # 兵从 e2 走到 e4
@@ -100,7 +98,7 @@ e8g8     # 黑方王车短易位
 
 支持带连字符：`e2-e4`、`e7-e8=q`
 
-### 交互命令
+**交互命令**  
 
 | 命令 | 功能 |
 | :--- | :--- |
@@ -129,14 +127,14 @@ chess-cli/
 
 本项目采用 **MIT License**，简单说就是：
 
-### ✅ 你可以
+**✅ 你可以**  
 
 - 免费使用（商业/个人/教育）
 - 自由修改
 - 重新发布
 - 商用
 
-### ❗ 你必须
+**❗ 你必须**  
 
 - **保留版权声明**
 - **二创必须注明出处**：`基于 https://github.com/TheSilentOne-creator/chess-cli 修改`
@@ -147,7 +145,7 @@ chess-cli/
 
 欢迎提交 Issue、PR！
 
-### 可以贡献的方向
+**可以贡献的方向**  
 
 - 🐛 修 Bug
 - 🚀 优化 AI 搜索（加入开局库、残局库）
@@ -155,7 +153,7 @@ chess-cli/
 - 📝 完善文档
 - 🌐 多语言支持
 
-### 提交要求
+**提交要求**  
 
 1. 保持零依赖（只用 Python 标准库）
 2. 代码风格遵循 PEP 8
@@ -174,9 +172,19 @@ chess-cli/
 
 **v1.1.2 — AI 增强**  
 
-- [ ] **开局库** — 前 5 步预置开局，AI 秒响应
-- [ ] **AI 随机性** — 相同局面下 AI 走法略有不同
-- [ ] **AI 思考过程** — 显示每层深度的最佳走法和评估值
+- [x] **开局库** — 前 5 步预置开局，AI 秒响应
+- [x] **AI 随机性** — 相同局面下 AI 走法略有不同
+- [x] **AI 思考过程** — 显示每层深度的最佳走法和评估值
+
+---
+
+**Beta 1.1 — 引入面向对象思想**  
+
+- [ ] 提取 `Board` 类（棋盘状态）
+- [ ] 提取 `MoveGenerator` 类（走法生成）
+- [ ] 提取 `GameController` 类（游戏流程）
+- [ ] 合并 `play_ai` 和 `play_pvp`
+- [ ] 提取 `Renderer` 类（棋盘显示）
 
 ---
 
